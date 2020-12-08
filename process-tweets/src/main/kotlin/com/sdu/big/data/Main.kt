@@ -1,6 +1,6 @@
 package com.sdu.big.data
 
-import com.google.gson.Gson
+
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerConfig
