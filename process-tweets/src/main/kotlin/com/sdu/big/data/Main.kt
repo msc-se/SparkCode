@@ -1,6 +1,7 @@
 package com.sdu.big.data
 
 
+import com.google.gson.Gson
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.producer.KafkaProducer
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -24,7 +25,7 @@ import java.util.*
 import kotlin.collections.HashMap
 import kotlin.text.Charsets.UTF_8
 
-data class Place(val countryCode: String, val  country: String)
+data class Place(val country_code: String, val  country: String)
 
 data class Tweet(val place: Place?)
 
@@ -47,7 +48,8 @@ val kafkaParams: HashMap<String, Any> = hashMapOf(
     "bootstrap.servers" to "node-master:9092",
     "key.deserializer" to StringDeserializer::class.java.name,
     "value.deserializer" to TweetDeserializer::class.java.name,
-    "group.id" to "spark"
+    "group.id" to "spark",
+    "maxOffsetsPerTrigger" to 8192
 )
 
 val topics = listOf("tweets")
@@ -63,13 +65,13 @@ fun main() {
 
     val javaStreaming = JavaStreamingContext.getOrCreate(checkpoint) {
         val conf = SparkConf().setAppName("Kafka processor").set("spark.sql.shuffle.partitions", "5")
-        val jssc = JavaStreamingContext(conf, Durations.seconds(10))
+        val jssc = JavaStreamingContext(conf, Durations.seconds(5))
 
         val stream: JavaInputDStream<ConsumerRecord<String, Tweet>> =
             KafkaUtils.createDirectStream(jssc, LocationStrategies.PreferConsistent(), ConsumerStrategies.Subscribe(topics, kafkaParams))
 
         val global = stream.count().mapToPair { c -> Tuple2("Global", c) }
-        val countries = stream.filter { record -> record.value().place != null }.map { record -> record.value().place!!.countryCode }
+        val countries = stream.filter { record -> record.value().place != null }.map { record -> record.value().place!!.country_code }
         val countriesCount = countries.countByValue()
 
 
