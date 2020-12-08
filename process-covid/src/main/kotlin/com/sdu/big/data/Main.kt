@@ -47,19 +47,17 @@ fun main() {
     properties[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
 
     withSpark(appName = "Covid Processor", props = mapOf("spark.sql.shuffle.partitions" to "5")) {
-        val schema = spark.read().csv("hdfs://node-master:9000/user/hadoop/covid19-cases/header.csv").schema()
-        val stream = spark.readStream().schema(schema).option("header", true)
-            .csv("hdfs://node-master:9000/user/hadoop/covid19-cases/")
+        //val schema = spark.read().csv("hdfs://node-master:9000/user/hadoop/covid19-cases/header.csv").schema()
+        val stream = spark.read().option("header", true)
+            .csv("hdfs://node-master:9000/user/hadoop/covid19-cases/12-06-2020.csv")
 
-        val map = stream.map { row -> Tuple2(row.getString(3), if (row.isNullAt(7)) 0 else row.getLong(7)) }
-            .filter { row -> row._2 != null }.groupByKey { row -> row._1 }.count()
+        stream.createOrReplaceTempView("covid")
+        //val df = spark.sql("select covid._c3, covid._c7, count(*) from covid")
+        val df2 = spark.sql("SELECT covid.Country_Region AS country, SUM(CAST(covid.Confirmed AS LONG)) AS cases FROM covid GROUP BY covid.Country_Region")
 
-        val query = map.writeStream()
-            .outputMode("complete")
+        val query = df2.write()
             .format("console")
-            .start()
-
-        query.awaitTermination()
+            .save()
     }
 
 }
