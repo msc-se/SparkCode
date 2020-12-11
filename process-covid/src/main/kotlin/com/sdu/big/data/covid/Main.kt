@@ -31,8 +31,8 @@ fun main() {
         .set("hive.exec.dynamic.partition.mode", "nonstrict"))) {
 
         // Gets yesterday and the day before that dates
-        val date = LocalDate.now().minusDays(2).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
-        val oldDate = LocalDate.now().minusDays(3).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
+        val date = LocalDate.now().minusDays(1).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
+        val oldDate = LocalDate.now().minusDays(2).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
         //val date = "12-08-2020"
 
         // Read files
