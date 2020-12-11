@@ -20,7 +20,7 @@ const val KAFKA_TOPIC = "processed-tweets"
 // Offset format in JSON: Topic, Partition 0 and Unix time in milliseconds
 const val OFFSET = """ {"%s":{"0": %s}} """
 
-fun main() {
+fun main(args: Array<String>) {
 
     withSpark(builder = SparkSession.builder()
         .enableHiveSupport()
@@ -30,9 +30,15 @@ fun main() {
         .set("hive.exec.dynamic.partition", "true")
         .set("hive.exec.dynamic.partition.mode", "nonstrict"))) {
 
+        val now = if (args.isNotEmpty()) {
+            LocalDate.parse(args[0], DateTimeFormatter.ofPattern("MM-dd-yyyy"))
+        } else {
+            LocalDate.now()
+        }
+
         // Gets yesterday and the day before that dates
-        val date = LocalDate.now().minusDays(1).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
-        val oldDate = LocalDate.now().minusDays(2).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
+        val date = now.minusDays(1).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
+        val oldDate = now.minusDays(2).format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
         //val date = "12-08-2020"
 
         // Read files
