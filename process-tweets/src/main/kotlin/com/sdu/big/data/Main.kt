@@ -1,6 +1,5 @@
 package com.sdu.big.data
 
-
 import com.google.gson.Gson
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.apache.kafka.clients.producer.KafkaProducer
@@ -46,6 +45,7 @@ class TweetDeserializer : Deserializer<Tweet> {
 
 }
 
+
 var updateFunction = Function2<List<Int>, Optional<Int>, Optional<Int>> { values, state ->
     var newSum: Int = state.orElse(0)
 
@@ -56,11 +56,12 @@ var updateFunction = Function2<List<Int>, Optional<Int>, Optional<Int>> { values
 }
 
 const val WORD_COUNT_PATH = "hdfs:///user/hadoop/word-count/%s"
-
-const val checkpoint = "hdfs:///user/hadoop/tweets-offset1"
+// Kafka offset checkpoint path
+const val checkpoint = "hdfs://node-master:9000/user/hadoop/tweets-offset"
 
 const val nodes = "node-master:9092,node1:9092,node2:9092"
 
+// Kafka consumer properties
 val kafkaParams: HashMap<String, Any> = hashMapOf(
     "bootstrap.servers" to nodes,
     "key.deserializer" to StringDeserializer::class.java.name,
@@ -69,22 +70,23 @@ val kafkaParams: HashMap<String, Any> = hashMapOf(
 )
 
 val topics = listOf("tweets")
-
-var today = LocalDate.now()
-
+var today: LocalDate = LocalDate.now()
 
 fun main() {
 
+    // Kafka Producer properties
     val properties = Properties()
     properties[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = nodes
     properties[ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
     properties[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
 
-
+    // Creates the streaming context with all the processing and functionality
     val javaStreaming = JavaStreamingContext.getOrCreate(checkpoint) {
         val conf = SparkConf().setAppName("Kafka processor").set("spark.sql.shuffle.partitions", "5")
         val jssc = JavaStreamingContext(conf, Durations.seconds(60))
 
+
+        // Creates Direct stream
         val stream: JavaInputDStream<ConsumerRecord<String, Tweet>> =
             KafkaUtils.createDirectStream(
                 jssc,
@@ -111,15 +113,19 @@ fun main() {
         wordCountResult.foreachRDD { rdd -> rdd.saveAsTextFile(WORD_COUNT_PATH.format(now)) }
 
 
+        // Creates a key value pair with Global as key and the total number of tweets
         val global = stream.count().mapToPair { c -> Tuple2("Global", c) }
-        val countries = stream.filter { record -> record.value().place != null }
-            .map { record -> record.value().place!!.country_code }
-        val countriesCount = countries.countByValue()
 
+        // Removes every tweet with no location data and maps the different tweets by their country code. Lastly counts the tweets in each country code
+        val countriesCount = stream.filter { record -> record.value().place != null }
+            .map { record -> record.value().place!!.country_code }.countByValue()
 
+        // Combines country based tweet counts and global tweet count
         val result = countriesCount.union(global)
 
 
+        // Saves each RDD from the DStream to Kafka both the global and country based counts
+        // But only saves the country based counts if they are above 0
         result.foreachRDD { rdd ->
             rdd.foreachPartition { iter ->
                 val producer = KafkaProducer<String, String>(properties)
@@ -129,17 +135,17 @@ fun main() {
                         val record = ProducerRecord("processed-tweets", next._1.toLowerCase(), next._2.toString())
                         producer.send(record)
                     }
+                    producer.flush()
+                    producer.close()
                 }
-                producer.flush()
-                producer.close()
             }
         }
 
+        // Sets the Kafka checkpoint in HDFS
         jssc.checkpoint(checkpoint)
         jssc
     }
-
+    // Starts the streaming and awaits the termination
     javaStreaming.start()
     javaStreaming.awaitTermination()
-
 }
