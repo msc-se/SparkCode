@@ -24,9 +24,9 @@ import java.util.*
 import kotlin.collections.HashMap
 import kotlin.text.Charsets.UTF_8
 import org.apache.spark.api.java.function.Function2
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.lit
-import org.apache.spark.sql.types.StructType
 import java.io.Serializable
 import java.time.*
 
@@ -69,9 +69,8 @@ var updateFunction = Function2<List<Int>, Optional<State>, Optional<State>> { va
     }
 }
 
-const val WORD_COUNT_PATH = "hdfs:///user/hadoop/word-count/day=%s"
 // Kafka offset checkpoint path
-const val checkpoint = "hdfs://node-master:9000/user/hadoop/tweets-offset"
+const val checkpoint = "hdfs:///user/hadoop/tweets-offset"
 
 const val nodes = "node-master:9092,node1:9092,node2:9092"
 
@@ -95,7 +94,8 @@ fun main() {
 
     // Creates the streaming context with all the processing and functionality
     val javaStreaming = JavaStreamingContext.getOrCreate(checkpoint) {
-        val conf = SparkConf().setAppName("Kafka processor").set("spark.sql.shuffle.partitions", "5").set("hive.exec.dynamic.partition", "true").set("hive.exec.dynamic.partition.mode", "nonstrict")
+        val conf = SparkConf().setAppName("Kafka processor").set("spark.sql.shuffle.partitions", "5")
+            .set("hive.exec.dynamic.partition", "true").set("hive.exec.dynamic.partition.mode", "nonstrict")
         val jssc = JavaStreamingContext(conf, Durations.seconds(60))
 
         // Creates Direct stream
@@ -114,26 +114,20 @@ fun main() {
 
         val wordCountResult = wordCount.updateStateByKey(updateFunction).mapValues { it.count }
 
-        /*wordCountResult.foreachRDD { rdd ->
-            val spark = SparkSession.builder().appName("Spark Session").enableHiveSupport().config(conf).orCreate
+        wordCountResult.foreachRDD { rdd ->
+            val spark = SparkSession.builder().appName("Spark Session").enableHiveSupport()
+                .config(conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")).orCreate
             val date = LocalDate.now(ZoneOffset.UTC).format(
                 DateTimeFormatter.ofPattern("MM-dd-yyyy")
             )
             val word = rdd.map { Word(it._1, it._2) }
-            val df = spark.createDataFrame(word, Word::class.java)
-            df.withColumn("day", lit(date))
-                .write()
-                .mode("overwrite")
+            val df = spark.createDataFrame(word, Word::class.java).withColumn("day", lit(date))
+
+            df.write()
+                .mode(SaveMode.Overwrite)
                 .insertInto("wordcount")
-        }*/
 
-        wordCountResult.foreachRDD { rdd ->
-            val date = LocalDate.now(ZoneOffset.UTC).format(
-                DateTimeFormatter.ofPattern("MM-dd-yyyy")
-            )
-            rdd.saveAsTextFile(WORD_COUNT_PATH.format(date))
         }
-
 
         // Creates a key value pair with Global as key and the total number of tweets
         val global = stream.count().mapToPair { c -> Tuple2("Global", c) }
