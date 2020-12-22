@@ -94,9 +94,12 @@ fun main(args: Array<String>) {
         // Removes rows without a country code and creates table to be able to use SQL
         newResult.createOrReplaceTempView("result")
 
+        // All global tweets
+        val globalTweets = x.filter{ it.first == "GLOBAL" }.first().second
+
         // Creating Global rows with all the cases and tweets combined
         val global =
-            spark.sql("SELECT 'glo' AS code, '-1' AS code3, 'Global' AS country, cases, new_cases, population, tweets, CAST(COALESCE(new_cases / tweets, 0) AS NUMERIC(36,2)) AS new_cases_per_tweet FROM ( SELECT CAST(SUM(cases) AS BIGINT) as cases, CAST(SUM(new_cases) AS BIGINT) AS new_cases, SUM(population) AS population, SUM(tweets) AS tweets FROM result )")
+            spark.sql("SELECT 'glo' AS code, '-1' AS code3, 'Global' AS country, cases, new_cases, population, $globalTweets AS tweets, CAST(COALESCE(new_cases / $globalTweets, 0) AS NUMERIC(36,2)) AS new_cases_per_tweet FROM ( SELECT CAST(SUM(cases) AS BIGINT) as cases, CAST(SUM(new_cases) AS BIGINT) AS new_cases, SUM(population) AS population FROM result)")
 
         // Combines the country based data with the total global data
         val complete = global.union(newResult)
